@@ -1,0 +1,16 @@
+adler32.o
+crc32.o
+deflate.o
+inffast.o
+inflate.o
+inftrees.o
+trees.o
+zutil.o
+
+bzlib.o
+bz2compress.o
+bz2decompress.o
+crctable.o
+huffman.o
+blocksort.o
+randtable.o 

@@ -1,5 +1,4 @@
 # paq8sk
-high compression ratio file archiver. this is file archiver with high compression ratio for jpeg, image 24 bit, image 8 bit, x86/x64 files.
 
 To install and use in Windows:
 
@@ -534,4 +533,5 @@ at a time.  Using assembler is 8 times faster than C++ for this code
 and 1/3 faster overall.  (However I found that SSE2 code on an AMD-64,
 which computes 8 elements at a time, is not any faster).
 
-
+# SEE ALSO
+ paq8px https://github.com/hxim/paq8px
