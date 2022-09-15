@@ -547,7 +547,7 @@ which computes 8 elements at a time, is not any faster).
 
 */
 
-#define PROGNAME "paq8sk50"  // Please change this if you change the program.
+#define PROGNAME "paq8sk51"  // Please change this if you change the program.
 #define SIMD_GET_SSE  //uncomment to use SSE2 in ContexMap
 //#define MT            //uncomment for multithreading, compression only. Handled by CMake and gcc when -DMT is passed.
 #define SIMD_CM_R       // SIMD ContextMap byterun
@@ -1404,10 +1404,10 @@ const U8 WRT_wrd1[256]={
 const U32 tri[4]={0,4,3,7}, trj[4]={0,6,6,12};
 typedef enum {M_NO=-1,M_RECORD=0,M_IM8,M_IM24,M_SPARSE,M_JPEG,M_WAV,M_MATCH,M_MATCH1,M_DISTANCE,
               M_EXE,M_INDIRECT,M_DMC,M_NEST,M_NORMAL,M_IM1,M_XML,M_IM4,M_TEXT,
-              M_WORD,M_DEC,M_LINEAR,M_SPARSEMATCH,M_SPARSE_Y,M_PPM,M_CHART,M_LSTM,M_MODEL_COUNT} ModelTypes;
+              M_WORD,M_DEC,M_LINEAR,M_SPARSEMATCH,M_SPARSE_Y,M_SPARSE_Y1,M_PPM,M_CHART,M_LSTM,M_MODEL_COUNT} ModelTypes;
 const char* modelNames[M_MODEL_COUNT]={"RECORD","IM8","IM24","SPARSE","JPEG","WAV","MATCH","MATCH1","DISTANCE",
               "EXE","INDIRECT","DMC","NEST","NORMAL","IM1","XML","IM4","TEXT",
-              "WORD","DEC","LINEAR","SPARSEMATCH","SPARSE_Y","M_PPM","M_CHART","M_LSTM"};
+              "WORD","DEC","LINEAR","SPARSEMATCH","SPARSE_Y","SPARSE_Y1","M_PPM","M_CHART","M_LSTM"};
 #define PNGFlag (1<<31)
 #define GrayFlag (1<<30)
 // Contain all global data usable between models
@@ -8187,6 +8187,92 @@ public:
 }
 virtual ~linearPredictionModel(){ }
 };
+
+inline U32 hashxx(U32 a, U32 b, U32 c=0xffffffff, U32 d=0xffffffff,
+    U32 e=0xffffffff) {
+  U32 h=a*200002979u+b*30005491u+c*50004239u+d*70004807u+e*110002499u;
+  return h^h>>9^a>>2^b>>3^c>>4^d>>5^e>>6;
+}
+
+class sparseModely1: public Model {
+  BlockData& x;
+  Buf& buf;
+  const int N;
+  ContextMap2 cm;
+  U32 ctx;
+   U32 cxt[16];  // order 0-11 contexts
+   U32 t1[256];
+   U16 t2[0x10000];
+   U32 word0, word1;
+   U32 mask, mask2 ;
+
+public:
+  sparseModely1(BlockData& bd,U32 val=0):x(bd),buf(bd.buf), N(44),cm(CMlimit(MEM()*2), N,M_SPARSE_Y1),ctx(0) {
+  }
+  int inputs() {return N*cm.inputs();}
+  int nets() {return 264 + 256+256;}
+  int netcount() {return 2+1;}
+  int p(Mixer& m,int seenbefore,int howmany){//match order
+  int j=0;
+  if (x.bpos==0) {
+  int i;
+    for (i=14; i>0; --i)  // update order 0-11 context hashes
+      cxt[i]=hashxx(cxt[i-1], (x.c4&255));
+
+    cm.set(0);
+    cm.set(x.c4&0x000000ff);
+    cm.set(x.c4&0x0000ffff);
+    cm.set(x.c4&0x00ffffff);
+    cm.set(x.c4);
+    cm.set(cxt[5]);
+    cm.set(cxt[6]);
+    cm.set(cxt[14]);
+
+    // sparse model   
+    cm.set(x.c4&0xf8f8c0ff);
+    cm.set(x.c4&0x00e0e0e0);
+    cm.set(x.c4&0xffc0ff80);
+    cm.set((x.c4&0xffff0000));
+    cm.set((x.c4&0x0000ff00));
+    cm.set((x.c4&0x00ff0000));
+
+    int fl = 0;
+    if ((x.c4&0xff) != 0) {
+      if (isalpha(x.c4&0xff)) fl = 1;
+      else if (ispunct(x.c4&0xff)) fl = 2;
+      else if (isspace(x.c4&0xff)) fl = 3;
+      else if ((x.c4&0xff) == 0xff) fl = 4;
+      else if ((x.c4&0xff) < 16) fl = 5;
+      else if ((x.c4&0xff) < 64) fl = 6;
+      else fl = 7;
+    }
+    mask = (mask<<3)|fl;
+    cm.set(mask);
+    mask2 = (mask2<<3)|((mask>>27) & 7);
+    cm.set(hash(mask<<5,mask2<<2));
+
+
+
+    // word/exe model
+       int c = buf(1);
+       if (c>='A' && c<='Z') c+='a'-'A';
+      if ((c>='a' && c<='z') || c>=128) word0=hash(word0, c);
+      else if (word0) word1=word0,word0=0;
+      cm.set(word0);
+      cm.set(hash(word0, word1));
+     
+  }
+  int order = cm.mix(m);
+  U32 c1=buf(1), c2=buf(2);
+
+  m.set(c1+8, 264);
+  m.set(x.c0, 256);
+    m.set(order+16*(c1>32)+32*(x.bpos==0)+64*(c1==c2),256);
+  return 0;
+}
+virtual ~sparseModely1(){ }
+};
+
 //////////////////////////// sparseModel ///////////////////////
 
 // Model order 1-2 contexts with gaps.
@@ -8400,8 +8486,9 @@ class im24bitModel1: public Model {
                                      {11,1}, {11,1}, {11,1}, {11,1}, {11,1}, {11,1}, {11,1}, {11,1}, {11,1}, {11,1},
                                      {11,1}, {11,1}, {11,1}, {11,1}, {11,1}, {11,1},{11,1}, {11,1}, {11,1}, {11,1}};
     Array<U32> mixCxt;
+    IndirectMap  MIm24Map1 ,MIm24Map2 ;
 public:
-  im24bitModel1(BlockData& bd): nOLS(6),inpts(47),cm(CMlimit(MEM()*4), inpts,M_IM24,
+  im24bitModel1(BlockData& bd): nOLS(6),inpts(47+8-4),cm(CMlimit(MEM()*4), inpts,M_IM24,
   CM_RUN1+
   CM_RUN0+
   CM_MAIN1+
@@ -8413,7 +8500,7 @@ public:
    buf(bd.buf), buffer(0x100000),WWW(0), WW(0), W(0),NWW(0),NW(0) ,N(0), NE(0), NEE(0), NNWW(0), NNW(0),
    NN(0), NNE(0), NNEE(0), NNN(0), px(0),filter(0),  w(0), line(0), isPNG(0),R1(0), R2(0),filterOn(false),
    c4(bd.c4),c0(bd.c0),bpos(bd.bpos),lastWasPNG(0), WWp1(0), Wp1(0), p1(0), NWp1(0),
-   Np1(0), NEp1(0), NNp1(0),p2(0),lastw(0),lastpos(0),curpos(0), MapCtxs(n2Maps1), SCMapCtxs(nSCMaps-1), pOLS(nOLS),mixCxt(13){
+   Np1(0), NEp1(0), NNp1(0),p2(0),lastw(0),lastpos(0),curpos(0), MapCtxs(n2Maps1), SCMapCtxs(nSCMaps-1), MIm24Map1{21, 3, 128, 127},MIm24Map2{21, 3, 128, 127}, pOLS(nOLS),mixCxt(13){
   
     columns[0] = 1, columns[1]=1;
     column[0]=0,column[1]=0;
@@ -8421,8 +8508,8 @@ public:
     }
    
   int inputs() {return inpts*cm.inputs()+nSCMaps*2+100*2+1;}
-  int nets() {return 256+   256+   512+   2048+   8*32+   6*64+   256*2+   1024+   8192+   8192+   8192+   8192+  256;}
-  int netcount() {return 13;}
+  int nets() {return 256 + 256 + 512 + 2048 + 8*32 + 256*2 + 1024 + 8192*6 + 256*4 + 6 + 256+256 +256 + 256 + 6*64 + 6*64 + 8192;}
+  int netcount() {return 18+1+1+1+1+1+1+1;}
    
   int p(Mixer& m,int info,int val2=0){
   if (!bpos) {
@@ -8517,6 +8604,7 @@ public:
       WWp2=buffer(stride*2+2), Wp2=buffer(stride+2), p2=buffer(2), NWp2=buffer(w+stride+2), Np2=buffer(w+2), NEp2=buffer(w-stride+2), NNp2=buffer(w*2+2);
        
       int j = 0;
+      
       MapCtxs[j++] = Clamp4(N+p1-Np1, W, NW, N, NE);
       MapCtxs[j++] = Clamp4(N+p2-Np2, W, NW, N, NE);
       MapCtxs[j++] = (W+Clamp4(NE*3-NNE*3+NNNE, W, N, NE, NEE))/2;
@@ -8593,6 +8681,7 @@ public:
       MapCtxs[j++] = ((W+N)*3-NW*2)/4;
       MapCtxs[j++] = N;
       MapCtxs[j++] = NN;
+
       j = 0;
       SCMapCtxs[j++] = N+p1-Np1;
       SCMapCtxs[j++] = N+p2-Np2;
@@ -8662,17 +8751,23 @@ public:
       //if (val2==1) {if (++col>=stride*8) col=0;return 1;
       //}
       if (!isPNG){
-         
+
         int mean=W+NW+N+NE;
         const int var=(W*W+NW*NW+N*N+NE*NE-mean*mean/4)>>2;
         mean>>=2;
         const int logvar=ilog(var);
+        cm.set((W&0xC0)|((N&0xC0)>>2)|((WW&0xC0)>>4)|(NN>>6));
+        cm.set((((U8)(Clip(W+N-NW))))|(LogMeanDiffQt(Clip(N+NE-NNE), Clip(N+NW-NNW))<<11));
+        cm.set((((U8)(Clip(N*2-NN))))|(LogMeanDiffQt(W, Clip(NW*2-NNW))<<11));
+        cm.set((((U8)(Clip(W+N-NW))))|(LogMeanDiffQt(Clip(N+NE-NNE), Clip(N+NW-NNW))<<11));
 
-        cm.set(hash(++i,(N+1)>>1, LogMeanDiffQt(N,Clip(NN*2-NNN))));
-        cm.set(hash(++i,(W+1)>>1, LogMeanDiffQt(W,Clip(WW*2-WWW))));
-        cm.set(hash(++i,Clamp4(W+N-NW,W,NW,N,NE), LogMeanDiffQt(Clip(N+NE-NNE), Clip(N+NW-NNW))));
-        cm.set(hash(++i,(NNN+N+4)/8, Clip(N*3-NN*3+NNN)>>1 ));
-        cm.set(hash(++i,(WWW+W+4)/8, Clip(W*3-WW*3+WWW)>>1 ));
+
+
+        cm.set(hash(++i,color,(N+1)>>1, LogMeanDiffQt(N,Clip(NN*2-NNN))));
+        cm.set(hash(++i,color,(W+1)>>1, LogMeanDiffQt(W,Clip(WW*2-WWW))));
+        cm.set(hash(++i,color,Clamp4(W+N-NW,W,NW,N,NE), LogMeanDiffQt(Clip(N+NE-NNE), Clip(N+NW-NNW))));
+        cm.set(hash(++i,color,(NNN+N+4)/8, Clip(N*3-NN*3+NNN)>>1 ));
+        cm.set(hash(++i,color,(WWW+W+4)/8, Clip(W*3-WW*3+WWW)>>1 ));
         cm.set(hash(++i,color, (W+Clip(NE*3-NNE*3+NNNE))/4, LogMeanDiffQt(N,(NW+NE)/2)));
         cm.set(hash(++i,color, Clip((-WWWW+5*WWW-10*WW+10*W+Clamp4(NE*4-NNE*6+NNNE*4-NNNNE,N,NE,NEE, NEEE))/5)/4));
         cm.set(hash(++i,Clip(NEE+N-NNEE), LogMeanDiffQt(W,Clip(NW+NE-NNE))));
@@ -8715,7 +8810,6 @@ public:
         cm.set(hash(++i, color, N+p1-Np1));
         cm.set(hash(++i, color, NNNE, NNNEE)); //buf(w*3-stride),buf(w*3-stride*2)
         cm.set(hash(++i, color, NNNW, NNNWW ));//buf(w*3+stride), buf(w*3+stride*2)
-
         cm.set(hash(++i, mean, logvar>>4));
 
         ctx[0] = (min(color,stride-1)<<9)|((abs(W-N)>3)<<8)|((W>N)<<7)|((W>NW)<<6)|((abs(N-NW)>3)<<5)|((N>NW)<<4)|((abs(N-NE)>3)<<3)|((N>NE)<<2)|((W>WW)<<1)|(N>NN);
@@ -8796,6 +8890,7 @@ public:
   if (x>0 || !isPNG) {
     U8 B=(c0<<(8-bpos));
     int i=5;
+      
 
     Map[i++].set((((U8)(Clip(W+N-NW)-px-B))*8+bpos)|(LogMeanDiffQt(Clip(N+NE-NNE), Clip(N+NW-NNW))<<11));
     Map[i++].set((((U8)(Clip(N*2-NN)-px-B))*8+bpos)|(LogMeanDiffQt(W, Clip(NW*2-NNW))<<11));
@@ -8823,6 +8918,7 @@ public:
   if (++col>=stride*8) col=0;
       if (val2==1) return 1; 
       int  cnx=m.nx;
+      
       cm.mix(m);
       int count=(m.nx-cnx)/inpts;
       m.nx=cnx;
@@ -8851,6 +8947,8 @@ public:
         mixCxt[i++]=(min(255,(x+line)/32));
     }
     int i=0;
+    
+
     m.set(mixCxt[i++]|col, 256);
     m.set(mixCxt[i++], 256);
     m.set(mixCxt[i++], 512);
@@ -8863,6 +8961,18 @@ public:
     m.set(mixCxt[i++], 8192);
     m.set(hash(LogQt(N,5), LogMeanDiffQt(N,NN,3), c0)&0x1FFF, 8192);i++;
     m.set(hash(LogQt(W,5), LogMeanDiffQt(W,WW,3), c0)&0x1FFF, 8192);i++;
+    m.set(hash(LogQt(NN,5), LogMeanDiffQt(NN,NNN,3), c0)&0x1FFF, 8192);i++;
+    m.set(hash(LogQt(WW,5), LogMeanDiffQt(WW,WWW,3), c0)&0x1FFF, 8192);i++;
+	m.set((W&0xC0)|((N&0xC0)>>2)|((WW&0xC0)>>4)|(NN>>6),6*64);
+	m.set(Clamp4(N+p1-Np1, W, NW, N, NE),256);
+	m.set(Clamp4(N+p2-Np2, W, NW, N, NE),256);
+	m.set(W+Clamp4(NE*3-NNE*3+NNNE, W, N, NE, NEE),256);
+	m.set(Clamp4((W+Clip(NE*2-NNE))/2, W, NW, N, NE),256);
+	m.set((W+NEE)/2,256);
+	m.set(Clip((WWW-4*WW+6*W+Clip(NE*4-NNE*6+NNNE*4-NNNNE))/4),256);
+	m.set(Clip((-WWWW+5*WWW-10*WW+10*W+Clamp4(NE*4-NNE*6+NNNE*4-NNNNE, N, NE, NEE, NEEE))/5),256);
+	m.set(hash(LogQt(NNN,5), LogMeanDiffQt(NNN,NNNN,3), c0)&0x1FFF,8192);
+
     m.set(mixCxt[i++], 256);
     
   }
@@ -10127,17 +10237,17 @@ public:
                     // If first extra bit is 0 then value is negative.
               jassert((rs&15)<=10);
               const int r=rs>>4;
-              const int s=rs&15;
+              const int s=(rs&15);
               jassert(mcupos>>6==(mcupos+r)>>6);
               mcupos+=r+1;
               xe=huffcode&((1<<s)-1);
               if (s && !(xe>>(s-1))) xe-=(1<<s)-1;
               for (int i=r; i>=1; --i) {
                 cbuf2[cpos]=0;
-                cbuf[cpos++]=i<<4|s;
+                cbuf[cpos++]=i<<1|s;
               }
               cbuf2[cpos]=xe;
-              cbuf[cpos++]=(s<<4)|(huffcode<<2>>s&3)|12;
+              cbuf[cpos++]=(s<<4)|(huffcode<<2>>s&2)|12;
               ssum+=s;
             }
           }
@@ -10145,7 +10255,8 @@ public:
             jassert(rs<12);
             ++mcupos;
             xe=huffcode&((1<<rs)-1);
-            if (rs && !(xe>>(rs-1))) xe-=(1<<rs)-1;
+           
+            if (rs && !(xe>>(rs-1))) xe-=(1<< rs)-1;
             jassert(mcupos>=0 && mcupos>>6<10);
             const int comp=color[mcupos>>6];
             jassert(comp>=0 && comp<4);
@@ -10172,7 +10283,7 @@ public:
 
           // UPDATE_ADV_PRED !!!!
           {
-            const int acomp=mcupos>>6, q=64*images[idx].qmap[acomp];
+            const int acomp=mcupos>>6, q=64*(images[idx].qmap[acomp]);
             const int zz=mcupos&63, cpos_dc=cpos-zz;
             const bool norst=rstpos!=column+row*width;
             if (zz==0) {
@@ -10208,8 +10319,7 @@ public:
                 if (st==2)  adv_pred2[i]=p;
                 if (st==3)  adv_pred3[i]=p;
                 if (st==4)  adv_pred4[i]=p;
-
-                
+              
                 if (st==0) {
                   adv_pred[i]=p;
                 }
@@ -10317,11 +10427,11 @@ public:
   const int coef=(mcupos&63)|comp<<6;
   const int hc=(huffcode*4+((mcupos&63)==0)*2+(comp==0))|1<<(huffbits+2);
   const bool firstcol=column==0 && blockW[mcupos>>6]>mcupos;
-  const int hc2 = (1 << (huffbits - huffsize)) + ((huffcode & ((1 << (huffbits - huffsize)) - 1)) << 1) +  static_cast<int>(huffsize > 0);
+  const int hc2 = ((1 << (huffbits - huffsize)) << 1) + ((huffcode & ((1 << (huffbits - huffsize)) - 1)) << 4) +  static_cast<int>(huffsize > 0);
   if (++hbcount>2 || huffbits==0) hbcount=0;
   jassert(coef>=0 && coef<256);
   const int zu=zzu[mcupos&63], zv=zzv[mcupos&63];
-  zux=zux<<2;zux|=(zu>0)*2|zv>0;
+  zux=zux<<2; zux|=(zu>0)*2|zv>0;
     if (hbcount==0) {
     U32 n=hc*N;
     int i=0;
@@ -10465,7 +10575,7 @@ public:
     cxt[i++]=hash(++n, hc, adv_pred1[0]/16,prev_coef/15);
     cxt[i++]=hash(++n, hc, adv_pred1[1]/16,prev_coef/15);
     cxt[i++]=hash(++n, hc, adv_pred1[2]/16,prev_coef/15);
-   
+    
   }
 
   // Predict next bit
@@ -10478,11 +10588,11 @@ if (slow==true) x.count=0;
     case 0: {int p1=0;
             
             for (int i=0; i<N; ++i){  
-                p1=p=hmap.ps(i,finalize64(cxt[i],32),y); 
+                p1=p=hmap.ps(i,finalize64(cxt[i]>>1,40),y); 
                 const int n0=hmap.sn0(), n1=hmap.sn1();
                 m1.add((p-2048)>>3); 
                 m1.add(p=stretch(p)); 
-                m.add(p>>(1+hmap.siy())); 
+                m.add(p>>(1+hmap.siy()));
                 m.add((p>>2)*(n1-n0));
                 int p0=4095-p1;
                 m.add((((p1&n0)-(p0&n1))*1)/(4*4));
@@ -10520,14 +10630,14 @@ if (slow==true) x.count=0;
     }
     x.JPEG.state =0x1000u |
      ((hc2 & 0xFF) << 4) |
-     (static_cast<int>(ama> 0) << 3) |
-      (static_cast<int>(huffbits > 4) << 2) | 
+     (static_cast<int>(ama> 0) << 3) | 
+      (static_cast<int>(huffbits > 4) << 2) |      
       (static_cast<int>(comp == 0) << 1) | 
       static_cast<int>(zu + zv < 5);
   if( hbcount == 0 ) {
       int i=0;
-      Map1[i++].set(hash(hc>> 2,coef, adv_pred[0]/11));  // for examp.
-      Map1[i++].set(hash(hc>> 2,coef, adv_pred[1]/11));
+      Map1[i++].set(hash(hc>> 2,coef, rs , adv_pred[0]/11,prev_coef/22));  // for examp.
+      Map1[i++].set(hash(hc>> 2,coef, rs1, adv_pred[1]/11));
       Map1[i++].set(hash(hc>> 2,coef, adv_pred[2]/11));
       Map1[i++].set(hash(hc>> 2,coef, adv_pred[3]/11));
       Map1[i++].set(hash(hc>> 2,coef, adv_pred1[0]/11));  
@@ -10584,7 +10694,7 @@ if (slow==true) x.count=0;
       Map1[i++].set(hash(hc>> 2, cbuf[cpos-blockN[mcupos>>6]]));
       Map1[i++].set(hash(hc>> 2, cbuf[cpos-blockW[mcupos>>6]]));
       Map1[i++].set(hash(hc>> 2, zu,zv));
-      Map1[i++].set(hash(hc>> 2, ssum>>1, prev_coef2/10));
+      Map1[i++].set(hash(hc>> 2, ssum>>1, adv_pred[1],prev_coef2/10));
       Map1[i++].set(hash(hc>> 2, coef, ssum1>>2));
       Map1[i++].set(hash(hc>> 2, adv_pred[2]/17, run_pred[0], run_pred[4]));
       Map1[i++].set(hash(hc>> 2, adv_pred1[2]/17, run_pred[0], run_pred[2]));
@@ -10629,11 +10739,11 @@ if (slow==true) x.count=0;
       Map1[i++].set(hash(hc>> 2, adv_pred1[0]/16,prev_coef/42));
       Map1[i++].set(hash(hc>> 2, adv_pred2[2]/16,prev_coef/42));
 
-      Map1[i++].set(hash(hc>> 2, adv_pred1[1]/16,prev_coef_rs/42));
-      Map1[i++].set(hash(hc>> 2, adv_pred1[0]/16,prev_coef_rs/42));
+      Map1[i++].set(hash(hc>> 2, adv_pred1[1]/16,adv_pred[1],prev_coef_rs/42));
+      Map1[i++].set(hash(hc>> 2, adv_pred1[0]/16,adv_pred[1],prev_coef_rs/42));
 
       Map1[i++].set(hash(hc>> 2, adv_pred2[1]/16,prev_coef/42));
-      Map1[i++].set(hash(hc>> 2, adv_pred1[2]/16,prev_coef/42));
+      Map1[i++].set(hash(hc>> 2, coef,adv_pred1[2]/16,adv_pred[1],prev_coef/42));
 
       // etc
     MJPEGMap.set(hash(mcupos, column, row, hc >> 2));
@@ -10642,7 +10752,6 @@ if (slow==true) x.count=0;
   
   for (int i=0; i<M; ++i){
       int p=stretch(Map1[i].mix(m1));
-      
       m.add(p >>1);m1.add(p>>1);
   } 
   
@@ -10651,6 +10760,7 @@ if (slow==true) x.count=0;
   int sd=((smx.p((hc)&0xffff,y)));
    m1.add(sd=stretch(sd));
    m.add(sd);
+
    
    m1.set(firstcol, 2);
    m1.set( coef+256*min(3,huffbits), 1024 );
@@ -10660,7 +10770,7 @@ if (slow==true) x.count=0;
    m1.set(colCtx, 1024); 
    m1.set(lma, 256); 
    m1.set(ama, 16); 
-
+   
   int pr=m1.p(1,1);
    x.Misses+=x.Misses+((pr0>>11)!=y);
    jmiss+=jmiss+((pr0>>11)!=y);
@@ -10674,10 +10784,10 @@ if (slow==true) x.count=0;
 
   m.add(stretch(pr)>>2);
   m.add((pr-2048)>>3);
-  m.add(stretch((pr+pr0)>>1));
   pr=apm[2].p(pr0, hash(hc&511,abs(lcp[0])/14,abs(lcp[1])/(ccount>1?10:40),hbcount)&0x1FFFF  ,y, 1023);
      m.add(stretch(pr)>>2);
      m.add((pr-2048)>>3);
+
   pr=apm[3].p(pr, hash(hc&511,abs(lcp[2])/14,abs(lcp[3])/14,run_pred[1]/2,hbcount)&0x1FFFF  ,y, 1023);
      m.add(stretch(pr)>>2);
      m.add((pr-2048)>>3);
@@ -10711,15 +10821,15 @@ if (slow==true) x.count=0;
   pr=apm[12].p(pr0, hash(lma,ama,abs(adv_pred[0])/22,abs(adv_pred[1])/22)&0x1FFFF,y, 1023);
      m.add(stretch(pr)>>1);
      m.add((pr-2048)>>3);   
-
   m.set( 1 + (zu+zv<5)+(huffbits>8)*2+firstcol*4, 9 );
   m.set( 1 + (hc&0xFF) + 256*min(3,(zu+zv)/3), 1025 );
   m.set( coef+256*min(3,huffbits/2), 1024 );
   m.set ( (hc)&511, 512 );
 
   m.set( (((abs(adv_pred[1]) / 16) )<<6) |(x.Misses&0x38)|((lma)!=0)*4|(comp == 0)*2 |(min(3,ilog2(zu+zv))>1), 4096 );
-  int colCtx1=(width>64)?(min(63, column/max(1, width/64))):column;
+  int colCtx1=(width>64)?(min(63, 2*column/max(1, width/64))):column;
   m.set(colCtx1, 64);
+
   m.set(( (((abs(lcp[2]) / 16 )&15)<<8)| (((abs(lcp[1]) / 16 )&15)<<4) | (abs(lcp[0]) / 16)&15  ) , 4096 );
   m.set(( (((abs(lcp[3]) / 16 )&15)<<8)| (((abs(lcp[2]) / 16 )&15)<<4) | (abs(lcp[1]) / 16)&15  ) , 4096 );
   m.set(( (((abs(coef) / 16 )&15)<<8)| (((abs(rs) / 16 )&15)<<4) | (abs( lcp[0] ) / 16)&15  ) , 4096 );
@@ -10737,7 +10847,7 @@ if (slow==true) x.count=0;
   m.set(( (((abs(coef) / 16 )&15)<<8)| (((abs(rs1) / 16 )&15)<<4)   ) , 4096 );
   m.set(( (((abs(rs1) / 16 )&15)<<8)| (((abs(hc)/14 )&15)<<4)   ) , 4096 );
   m.set(( (((abs(rs) / 16 )&15)<<8)| (((abs(hc)/14 )&15)<<4)   ) , 4096 );
-
+  m.set(buf(1)+buf(2)-buf(3),2048);
 
   return 1;
   }
@@ -14217,6 +14327,11 @@ Predictors():  mixerInputs(0),mixerNets(0),mixerNetsCount(0){
               models[M_SPARSEMATCH] = new SparseMatchModel(x);
               break;
           }
+          case M_SPARSE_Y1:{
+              models[M_SPARSE_Y1] =    new sparseModely1(x);
+              break;
+          }
+
           case M_SPARSE_Y:{
               models[M_SPARSE_Y] =    new sparseModely(x);
               break;
@@ -14423,7 +14538,7 @@ class Predictor: public Predictors {
   U32 count;
   U32 lastmiss;
   eSSE sse;
-  const U8 activeModels[18] = { 
+  const U8 activeModels[18+1] = { 
    M_RECORD,
    M_MATCH ,
    M_MATCH1, 
@@ -14439,6 +14554,8 @@ class Predictor: public Predictors {
    M_LINEAR, 
    M_SPARSEMATCH, 
    M_SPARSE_Y,
+   M_SPARSE_Y1,
+
    M_PPM,M_CHART,M_LSTM    };
 public:
   Predictor();
@@ -14451,7 +14568,7 @@ public:
 
 Predictor::Predictor(): pr(16384),pr0(pr),order(0),ismatch(0), a(x),isCompressed(false),count(0),lastmiss(0),
  sse(x){
-   loadModels(activeModels,18);
+   loadModels(activeModels,18+1);
    // add extra 
    mixerInputs+=1;
    mixerNets+=64+    (8+1024)+    256+    512+   2048+   2048+    256+    1536;
@@ -14504,6 +14621,8 @@ void Predictor::update()  {
             rlen=models[M_RECORD]->p(*m,dataRecordLen);
             models[M_WORD]->p(*m,0,x.finfo>0?x.finfo:0); //col
             models[M_SPARSE_Y]->p(*m,ismatch,order);
+            models[M_SPARSE_Y1]->p(*m,ismatch,order);
+
             models[M_DISTANCE]->p(*m);
             models[M_INDIRECT]->p(*m);
             models[M_NEST]->p(*m);
@@ -14654,7 +14773,7 @@ class PredictorJPEG: public Predictors {
       APM APMs[1];
     } Jpeg;
   bool Bypass; 
-  const U8 activeModels[8+3+3+2+2] = { 
+  const U8 activeModels[8+3+3+2+2+1] = { 
    M_RECORD,
 
    M_DISTANCE, 
@@ -14667,6 +14786,7 @@ class PredictorJPEG: public Predictors {
 
    M_SPARSEMATCH, 
    M_SPARSE_Y,
+   M_SPARSE_Y1,
 
    M_JPEG,
    M_MATCH,
@@ -14686,7 +14806,7 @@ PredictorJPEG(): pr(16384),
     { /*APM:*/ { 0x2000} }
   },
   Bypass(false){
-   loadModels(activeModels,8+3+3+2+2);
+   loadModels(activeModels,8+3+3+2+2+1);
    // add extra 
    mixerInputs+=3+1+1-3;
    mixerNets+=    4096+    (8+1024)+       256+       256+       256+       256+       1536+(8*4096);
@@ -14697,7 +14817,7 @@ PredictorJPEG(): pr(16384),
 }
 
 void update()  {
-    pr=(32768-pr)/(32768/4096);
+    pr=(32768*0.5-pr)/(32768/4096);
     if(pr<1) pr=1;
     if(pr>4095) pr=4095;
     x.Misses+=x.Misses+((pr>>10)!=x.y);
@@ -14725,7 +14845,7 @@ void update()  {
         models[M_RECORD]->p(*m);
         models[M_DMC]->p(*m);   
         models[M_PPM]->p(*m); 
-
+        models[M_NEST]->p(*m);
 
         pr=m->p(1,0);
     }
@@ -14774,6 +14894,7 @@ void update()  {
         m->set(c, 1536);
         pr=m->p(1,1);
     }
+
     U32 pr0 = Jpeg.APMs[0].p(pr , x.JPEG.state,x.y, 0x3FF);
     pr = (pr + pr0 + 1) / 2;
     pr=(4096-pr)*(32768/4096);
@@ -15053,11 +15174,11 @@ class PredictorIMG24: public Predictors {
   } Image;
   StateMap StateMaps[2];
   eSSE sse;
-  const U8 activeModels[4] = { 
-   M_MATCH ,
+  const U8 activeModels[4+1+1+1+2+1+1] = { 
+   M_MATCH ,M_PPM,M_IM8,
    M_MATCH1, 
-   M_IM24,
-   //M_NORMAL,
+   M_IM24,M_DMC,M_DISTANCE, M_INDIRECT,
+   M_NORMAL,M_RECORD,
    M_LSTM    };
 public:
   int p()  const {/*assert(pr>=0 && pr<4096);*/ return pr;} 
@@ -15065,7 +15186,7 @@ public:
 
 PredictorIMG24(): pr(16384),Image{ {0x1000/*, 0x10000, 0x10000, 0x10000*/}, {{0x10000,x}, {0x10000,x}} },
                   StateMaps{ 256, 256*256}, sse(x){
-  loadModels(activeModels,4);   
+  loadModels(activeModels,4+1+1+1+2+1+1);   
    // add extra 
    mixerInputs+=1+2;
    mixerNets+=  8192;
@@ -15088,6 +15209,9 @@ void update()  {
   models[M_MATCH1]->p(*m);
   //if (slow==true) models[M_NORMAL]->p(*m);
   if (slow==true) models[M_LSTM]->p(*m);
+
+  models[M_DMC]->p(*m);   
+  models[M_IM8]->p(*m,x.finfo);
   models[M_IM24]->p(*m,x.finfo);
   m->add((stretch(StateMaps[0].p(x.c0,x.y))+1)>>1);
   m->add((stretch(StateMaps[1].p(x.c0|(x.buf(1)<<8),x.y))+1)>>1);
