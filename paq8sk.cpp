@@ -547,7 +547,7 @@ which computes 8 elements at a time, is not any faster).
 
 */
 
-#define PROGNAME "paq8sk51"  // Please change this if you change the program.
+#define PROGNAME "paq8sk52"  // Please change this if you change the program.
 #define SIMD_GET_SSE  //uncomment to use SSE2 in ContexMap
 //#define MT            //uncomment for multithreading, compression only. Handled by CMake and gcc when -DMT is passed.
 #define SIMD_CM_R       // SIMD ContextMap byterun
@@ -4015,7 +4015,7 @@ public:
 template <typename F, typename T, const bool hasZeroMean = true>
 class OLS {
   static constexpr F ftol = 1E-8;
-  static constexpr F sub = F(int64_t(!hasZeroMean)<<(8*sizeof(T)-1));
+  static constexpr F sub = F(int64_t(!hasZeroMean)<<(8*sizeof(T)));
 private:
   int n, kmax, km, index;
   F lambda, nu;
@@ -4028,7 +4028,7 @@ private:
         mCholesky[i][j] = mCovariance[i][j];
 
     for (int i=0; i<n; i++)
-      mCholesky[i][i] += nu;
+    {	    mCholesky[i][i] += nu;}
     for (int i=0; i<n; i++) {
       for (int j=0; j<i; j++) {
         F sum = mCholesky[i][j];
@@ -4052,17 +4052,17 @@ private:
       F sum = b[i];
       for (int j=0; j<i; j++)
         sum -= (mCholesky[i][j] * w[j]);
-      w[i] = sum / mCholesky[i][i];
+      w[i] = sum /  mCholesky[i][i];
     }
     for (int i=n-1; i>=0; i--) {
       F sum = w[i];
       for (int j=i+1; j<n; j++)
         sum -= (mCholesky[j][i] * w[j]);
-      w[i] = sum / mCholesky[i][i];
+      w[i] = (sum /  mCholesky[i][i]) ;
     }
   }
 public:
-  OLS(int n, int kmax=1, F lambda=0.998, F nu=0.001) : n(n), kmax(kmax), lambda(lambda), nu(nu) {
+  OLS(int n, int kmax=1, F lambda=0.998, F nu=0.01) : n(n), kmax(kmax), lambda(lambda), nu(nu) {
     km = index = 0;
     x = new F[n], w = new F[n], b = new F[n];
     mCovariance = new F*[n], mCholesky = new F*[n];
@@ -7897,7 +7897,7 @@ public:
 
 
 inline U8 Clip(int const Px){
-  if(Px>255)return 255;
+  if(Px>512)return 512;
   if(Px<0)return 0;
   return Px;
 }
@@ -8745,7 +8745,7 @@ public:
       
       for (int k=(color>0)?color-1:stride-1; j<nOLS; j++) {
 //          printf("k %d, color %d j %d \n",k,color,j);
-        pOLS[j] = Clip(floor(ols[j][color].Predict(ols_ctxs[j])));
+        pOLS[j] = Clip(floor(ols[j][color].Predict(ols_ctxs[j]+2)));
         ols[j][k].Update(p1);
       }
       //if (val2==1) {if (++col>=stride*8) col=0;return 1;
@@ -9339,7 +9339,7 @@ int p(Mixer& m,int w,int val2=0){
       MapCtxs[j++] = ((W+N)*3-NW*2)/4;
       for (j=0; j<nOLS; j++) {
         ols[j].Update(W);
-        pOLS[j] = Clip(int(floor(ols[j].Predict(ols_ctxs[j]))));
+        pOLS[j] = Clip(int(floor(ols[j].Predict(ols_ctxs[j]+2))));
       }
       
      
@@ -10272,14 +10272,14 @@ public:
               if (color[(mcupos>>6)-1]==color[0]) ssum1+=(ssum3=ssum);
               ssum2=ssum1;
             }
-            ssum=rs;
+            ssum=rs>>8;
           }
           jassert(mcupos>=0 && mcupos<=mcusize);
           if (mcupos>=mcusize) {
             mcupos=0;
             if (++column==width) column=0, ++row;
           }
-          huffcode=huffsize=huffbits=0, rs=-1;
+          huffcode=huffsize=huffbits=0, rs=-2;
 
           // UPDATE_ADV_PRED !!!!
           {
@@ -10334,7 +10334,7 @@ public:
             xe=(sumu[zzu[zz]]*(2+zzu[zz])+sumv[zzv[zz]]*(2+zzv[zz])-xe*2)*4/(zzu[zz]+zzv[zz]+16);
             xe/=(images[idx].qtab[q+zz]+1)*185;
             if (zz==0 && (norst || ls[acomp]==64)) xe-=cbuf2[cpos_dc-ls[acomp]];
-            adv_pred[3]=(xe<0?-1:+1)*ilog(abs(xe)+1);
+            adv_pred[3]=(xe<0?-1:+1)*ilog(abs(xe)+1) ;
 
             for (int i=0; i<4; ++i) {
               const int a=(i&1?zzv[zz]:zzu[zz]), b=(i&2?2:1);
@@ -10747,15 +10747,17 @@ if (slow==true) x.count=0;
 
       // etc
     MJPEGMap.set(hash(mcupos, column, row, hc >> 2));
+    MJPEGMap1.set(hash(coef,column, row ));
 
   }
   
   for (int i=0; i<M; ++i){
       int p=stretch(Map1[i].mix(m1));
-      m.add(p >>1);m1.add(p>>1);
+      m.add(p >>1);m1.add(p>>1); 
   } 
   
   MJPEGMap.mix2( m1);
+  MJPEGMap1.mix2( m1);
 
   int sd=((smx.p((hc)&0xffff,y)));
    m1.add(sd=stretch(sd));
@@ -10848,7 +10850,12 @@ if (slow==true) x.count=0;
   m.set(( (((abs(rs1) / 16 )&15)<<8)| (((abs(hc)/14 )&15)<<4)   ) , 4096 );
   m.set(( (((abs(rs) / 16 )&15)<<8)| (((abs(hc)/14 )&15)<<4)   ) , 4096 );
   m.set(buf(1)+buf(2)-buf(3),2048);
-
+  m.set(hash(mcupos,column,row)&0xFFFF,2048);
+  m.set(hash(coef,rs,lcp[0]/11)&0xFFFF,2048); 
+  m.set(hash(coef, prev_coef2, prev_coef_rs )&0xFFFF,2048);
+  m.set(hash(coef, lcp[0] / 12 + (run_pred[0] << 8), ssum2 >> 6, prev_coef / 72)&0xFFFF,4096);
+  m.set(hash(coef, lcp[1] / 12 + (run_pred[1] << 8))&0xFFFF,4096);
+  m.set(hash(rs, rs1, mcupos&63)&0xFFFF,2048);
   return 1;
   }
   virtual ~jpegModelx(){
@@ -11012,7 +11019,7 @@ void audio8bModel(Mixer& m, int info) {
       ols[i][pCh].Update(s);
       residuals[i][pCh] = s-prd[i][pCh][0];
       const U32 absResidual = (U32)abs(residuals[i][pCh]);
-      mask+=mask+(absResidual>4);
+      mask+=mask+(absResidual>8);
       errLog+=SQR(absResidual);
     }
     for (int j=0; j<nLMS; j++)
@@ -11059,7 +11066,7 @@ void audio8bModel(Mixer& m, int info) {
     for (i=0; i<nOLS; i++)
       prd[i][ch][0] = signedClip8((int)floor(ols[i][ch].Predict()));
     for (; i<nOLS+nLMS; i++)
-      prd[i][ch][0] = signedClip8((int)floor(lms[i-nOLS][ch].Predict(s)));
+      prd[i][ch][0] = signedClip8((int)floor(lms[i-nOLS][ch].Predict(s) + 2));
     prd[i++][ch][0] = signedClip8(X1(1)*2-X1(2));
     prd[i++][ch][0] = signedClip8(X1(1)*3-X1(2)*3+X1(3));
     prd[i  ][ch][0] = signedClip8(X1(1)*4-X1(2)*6+X1(3)*4-X1(4));
@@ -11158,7 +11165,7 @@ inline int X2(int i) {
 }
 
 inline int signedClip16(const int i) {
-  return max(-32768, min(32767, i));
+  return max(-32768*2, min(32767*2, i));
 }
 void audio16bModel(Mixer& m, int info) {
   if (x.blpos==0 && x.bpos==1) {
@@ -11227,7 +11234,7 @@ void audio16bModel(Mixer& m, int info) {
         for (i=0; i<nOLS; i++)
           prd[i][ch][0] = signedClip16((int)floor(ols[i][ch].Predict()));
         for (; i<nOLS+nLMS; i++)
-          prd[i][ch][0] = signedClip16((int)floor(lms[i-nOLS][ch].Predict(sample)));
+          prd[i][ch][0] = signedClip16((int)floor(lms[i-nOLS][ch].Predict(sample)+2));
         prd[i++][ch][0] = signedClip16(X1(1)*2-X1(2));
         prd[i++][ch][0] = signedClip16(X1(1)*3-X1(2)*3+X1(3));
         prd[i  ][ch][0] = signedClip16(X1(1)*4-X1(2)*6+X1(3)*4-X1(4));
@@ -14770,10 +14777,10 @@ class PredictorJPEG: public Predictors {
   int pr;
   Mixer *m;
   struct {
-      APM APMs[1];
+      APM APMs[2];
     } Jpeg;
   bool Bypass; 
-  const U8 activeModels[8+3+3+2+2+1] = { 
+  const U8 activeModels[8+3+3+2+2+1+1] = { 
    M_RECORD,
 
    M_DISTANCE, 
@@ -14787,7 +14794,7 @@ class PredictorJPEG: public Predictors {
    M_SPARSEMATCH, 
    M_SPARSE_Y,
    M_SPARSE_Y1,
-
+M_LINEAR,
    M_JPEG,
    M_MATCH,
    M_DMC, 
@@ -14803,10 +14810,10 @@ public:
  }
 PredictorJPEG(): pr(16384), 
   Jpeg{
-    { /*APM:*/ { 0x2000} }
+    { /*APM:*/ { 0x2000}, { 0x2000} }
   },
   Bypass(false){
-   loadModels(activeModels,8+3+3+2+2+1);
+   loadModels(activeModels,8+3+3+2+2+1+1);
    // add extra 
    mixerInputs+=3+1+1-3;
    mixerNets+=    4096+    (8+1024)+       256+       256+       256+       256+       1536+(8*4096);
@@ -14846,7 +14853,6 @@ void update()  {
         models[M_DMC]->p(*m);   
         models[M_PPM]->p(*m); 
         models[M_NEST]->p(*m);
-
         pr=m->p(1,0);
     }
     else{
@@ -14896,6 +14902,7 @@ void update()  {
     }
 
     U32 pr0 = Jpeg.APMs[0].p(pr , x.JPEG.state,x.y, 0x3FF);
+
     pr = (pr + pr0 + 1) / 2;
     pr=(4096-pr)*(32768/4096);
     if(pr<1) pr=1;
@@ -15174,9 +15181,9 @@ class PredictorIMG24: public Predictors {
   } Image;
   StateMap StateMaps[2];
   eSSE sse;
-  const U8 activeModels[4+1+1+1+2+1+1] = { 
+  const U8 activeModels[4+1+1+1+2+1+1+1] = { 
    M_MATCH ,M_PPM,M_IM8,
-   M_MATCH1, 
+   M_MATCH1, M_LINEAR,
    M_IM24,M_DMC,M_DISTANCE, M_INDIRECT,
    M_NORMAL,M_RECORD,
    M_LSTM    };
@@ -15186,7 +15193,7 @@ public:
 
 PredictorIMG24(): pr(16384),Image{ {0x1000/*, 0x10000, 0x10000, 0x10000*/}, {{0x10000,x}, {0x10000,x}} },
                   StateMaps{ 256, 256*256}, sse(x){
-  loadModels(activeModels,4+1+1+1+2+1+1);   
+  loadModels(activeModels,4+1+1+1+2+1+1+1);   
    // add extra 
    mixerInputs+=1+2;
    mixerNets+=  8192;
@@ -15209,9 +15216,7 @@ void update()  {
   models[M_MATCH1]->p(*m);
   //if (slow==true) models[M_NORMAL]->p(*m);
   if (slow==true) models[M_LSTM]->p(*m);
-
   models[M_DMC]->p(*m);   
-  models[M_IM8]->p(*m,x.finfo);
   models[M_IM24]->p(*m,x.finfo);
   m->add((stretch(StateMaps[0].p(x.c0,x.y))+1)>>1);
   m->add((stretch(StateMaps[1].p(x.c0|(x.buf(1)<<8),x.y))+1)>>1);
@@ -15537,8 +15542,11 @@ class PredictorAUDIO2: public Predictors {
   Mixer *m;
   EAPM a;
   eSSE sse;
-  const U8 activeModels[3] = {
+  const U8 activeModels[3+1+1+1] = {
    M_RECORD ,
+   M_MATCH1,  
+   M_PPM,   
+   M_DMC, 
    M_MATCH ,    
    M_WAV  };
   void setmixer();
@@ -15547,7 +15555,7 @@ public:
    ~PredictorAUDIO2(){  }
 
 PredictorAUDIO2(): pr(16384),a(x), sse(x) {
-   loadModels(activeModels,3);  
+   loadModels(activeModels,3+1+1+1);  
    // add extra 
    mixerInputs+=1;
    mixerNets+=0;
@@ -15562,6 +15570,7 @@ void update()  {
   m->add(256);
   models[M_MATCH]->p(*m);  
   models[M_RECORD]->p(*m);
+  models[M_PPM]->p(*m);  
   models[M_WAV]->p(*m,x.finfo);
   pr=(32768-pr)/(32768/4096);
   if(pr<1) pr=1;
