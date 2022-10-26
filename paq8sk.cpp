@@ -547,7 +547,7 @@ which computes 8 elements at a time, is not any faster).
 
 */
 
-#define PROGNAME "paq8sk52"  // Please change this if you change the program.
+#define PROGNAME "paq8sk53"  // Please change this if you change the program.
 #define SIMD_GET_SSE  //uncomment to use SSE2 in ContexMap
 //#define MT            //uncomment for multithreading, compression only. Handled by CMake and gcc when -DMT is passed.
 #define SIMD_CM_R       // SIMD ContextMap byterun
@@ -8449,7 +8449,7 @@ class im24bitModel1: public Model {
    U8 NNNNN;
    U8 NNNNNN;
    Array<U8> MapCtxs, SCMapCtxs, pOLS;
-   const double lambda[6] ={ 0.98, 0.87, 0.9, 0.8, 0.9, 0.7 };
+   const double lambda[6] ={ 0.98, 0.87, 0.9, 0.8, 0.92, 0.7 };
    const int num[6] ={ 32, 12, 15, 10, 14, 8 };
    OLS<double, U8> ols[6][4] = { 
     {{num[0], 1, lambda[0]}, {num[0], 1, lambda[0]}, {num[0], 1, lambda[0]}, {num[0], 1, lambda[0]}},
@@ -8486,9 +8486,8 @@ class im24bitModel1: public Model {
                                      {11,1}, {11,1}, {11,1}, {11,1}, {11,1}, {11,1}, {11,1}, {11,1}, {11,1}, {11,1},
                                      {11,1}, {11,1}, {11,1}, {11,1}, {11,1}, {11,1},{11,1}, {11,1}, {11,1}, {11,1}};
     Array<U32> mixCxt;
-    IndirectMap  MIm24Map1 ,MIm24Map2 ;
 public:
-  im24bitModel1(BlockData& bd): nOLS(6),inpts(47+8-4),cm(CMlimit(MEM()*4), inpts,M_IM24,
+  im24bitModel1(BlockData& bd): nOLS(6),inpts(47+1),cm(CMlimit(MEM()*4), inpts,M_IM24,
   CM_RUN1+
   CM_RUN0+
   CM_MAIN1+
@@ -8500,7 +8499,7 @@ public:
    buf(bd.buf), buffer(0x100000),WWW(0), WW(0), W(0),NWW(0),NW(0) ,N(0), NE(0), NEE(0), NNWW(0), NNW(0),
    NN(0), NNE(0), NNEE(0), NNN(0), px(0),filter(0),  w(0), line(0), isPNG(0),R1(0), R2(0),filterOn(false),
    c4(bd.c4),c0(bd.c0),bpos(bd.bpos),lastWasPNG(0), WWp1(0), Wp1(0), p1(0), NWp1(0),
-   Np1(0), NEp1(0), NNp1(0),p2(0),lastw(0),lastpos(0),curpos(0), MapCtxs(n2Maps1), SCMapCtxs(nSCMaps-1), MIm24Map1{21, 3, 128, 127},MIm24Map2{21, 3, 128, 127}, pOLS(nOLS),mixCxt(13){
+   Np1(0), NEp1(0), NNp1(0),p2(0),lastw(0),lastpos(0),curpos(0), MapCtxs(n2Maps1), SCMapCtxs(nSCMaps-1), pOLS(nOLS),mixCxt(13){
   
     columns[0] = 1, columns[1]=1;
     column[0]=0,column[1]=0;
@@ -8508,8 +8507,8 @@ public:
     }
    
   int inputs() {return inpts*cm.inputs()+nSCMaps*2+100*2+1;}
-  int nets() {return 256 + 256 + 512 + 2048 + 8*32 + 256*2 + 1024 + 8192*6 + 256*4 + 6 + 256+256 +256 + 256 + 6*64 + 6*64 + 8192;}
-  int netcount() {return 18+1+1+1+1+1+1+1;}
+  int nets() {return 256+   256+   512+   2048+   8*32+   6*64+   256*2+   1024+   8192+   8192+   8192+   8192+  256 + 4*8192 + 7*256 + 256 + 256;}
+  int netcount() {return 13 + 4 + 7 + 1 + 1;}
    
   int p(Mixer& m,int info,int val2=0){
   if (!bpos) {
@@ -8526,7 +8525,7 @@ public:
       
       x =1; color = line =px =0;
        filterOn = false;
-      columns[0] = max(1,w/max(1,ilog2(w)*3));
+      columns[0] = max(1,w/max(1,ilog2(w)*2));
       columns[1] = max(1,columns[0]/max(1,ilog2(columns[0])));
       if ( lastWasPNG!=isPNG){
         for (int i=0;i<n2Maps;i++)
@@ -8604,7 +8603,6 @@ public:
       WWp2=buffer(stride*2+2), Wp2=buffer(stride+2), p2=buffer(2), NWp2=buffer(w+stride+2), Np2=buffer(w+2), NEp2=buffer(w-stride+2), NNp2=buffer(w*2+2);
        
       int j = 0;
-      
       MapCtxs[j++] = Clamp4(N+p1-Np1, W, NW, N, NE);
       MapCtxs[j++] = Clamp4(N+p2-Np2, W, NW, N, NE);
       MapCtxs[j++] = (W+Clamp4(NE*3-NNE*3+NNNE, W, N, NE, NEE))/2;
@@ -8681,7 +8679,6 @@ public:
       MapCtxs[j++] = ((W+N)*3-NW*2)/4;
       MapCtxs[j++] = N;
       MapCtxs[j++] = NN;
-
       j = 0;
       SCMapCtxs[j++] = N+p1-Np1;
       SCMapCtxs[j++] = N+p2-Np2;
@@ -8745,29 +8742,23 @@ public:
       
       for (int k=(color>0)?color-1:stride-1; j<nOLS; j++) {
 //          printf("k %d, color %d j %d \n",k,color,j);
-        pOLS[j] = Clip(floor(ols[j][color].Predict(ols_ctxs[j]+2)));
+        pOLS[j] = Clip(floor(ols[j][color].Predict(ols_ctxs[j])));
         ols[j][k].Update(p1);
       }
       //if (val2==1) {if (++col>=stride*8) col=0;return 1;
       //}
       if (!isPNG){
-
+         
         int mean=W+NW+N+NE;
         const int var=(W*W+NW*NW+N*N+NE*NE-mean*mean/4)>>2;
         mean>>=2;
         const int logvar=ilog(var);
-        cm.set((W&0xC0)|((N&0xC0)>>2)|((WW&0xC0)>>4)|(NN>>6));
-        cm.set((((U8)(Clip(W+N-NW))))|(LogMeanDiffQt(Clip(N+NE-NNE), Clip(N+NW-NNW))<<11));
-        cm.set((((U8)(Clip(N*2-NN))))|(LogMeanDiffQt(W, Clip(NW*2-NNW))<<11));
-        cm.set((((U8)(Clip(W+N-NW))))|(LogMeanDiffQt(Clip(N+NE-NNE), Clip(N+NW-NNW))<<11));
 
-
-
-        cm.set(hash(++i,color,(N+1)>>1, LogMeanDiffQt(N,Clip(NN*2-NNN))));
-        cm.set(hash(++i,color,(W+1)>>1, LogMeanDiffQt(W,Clip(WW*2-WWW))));
-        cm.set(hash(++i,color,Clamp4(W+N-NW,W,NW,N,NE), LogMeanDiffQt(Clip(N+NE-NNE), Clip(N+NW-NNW))));
-        cm.set(hash(++i,color,(NNN+N+4)/8, Clip(N*3-NN*3+NNN)>>1 ));
-        cm.set(hash(++i,color,(WWW+W+4)/8, Clip(W*3-WW*3+WWW)>>1 ));
+        cm.set(hash(++i,(N+1)>>1, LogMeanDiffQt(N,Clip(NN*2-NNN))));
+        cm.set(hash(++i,(W+1)>>1, LogMeanDiffQt(W,Clip(WW*2-WWW))));
+        cm.set(hash(++i,Clamp4(W+N-NW,W,NW,N,NE), LogMeanDiffQt(Clip(N+NE-NNE), Clip(N+NW-NNW))));
+        cm.set(hash(++i,(NNN+N+4)/8, Clip(N*3-NN*3+NNN)>>1 ));
+        cm.set(hash(++i,(WWW+W+4)/8, Clip(W*3-WW*3+WWW)>>1 ));
         cm.set(hash(++i,color, (W+Clip(NE*3-NNE*3+NNNE))/4, LogMeanDiffQt(N,(NW+NE)/2)));
         cm.set(hash(++i,color, Clip((-WWWW+5*WWW-10*WW+10*W+Clamp4(NE*4-NNE*6+NNNE*4-NNNNE,N,NE,NEE, NEEE))/5)/4));
         cm.set(hash(++i,Clip(NEE+N-NNEE), LogMeanDiffQt(W,Clip(NW+NE-NNE))));
@@ -8810,7 +8801,9 @@ public:
         cm.set(hash(++i, color, N+p1-Np1));
         cm.set(hash(++i, color, NNNE, NNNEE)); //buf(w*3-stride),buf(w*3-stride*2)
         cm.set(hash(++i, color, NNNW, NNNWW ));//buf(w*3+stride), buf(w*3+stride*2)
+
         cm.set(hash(++i, mean, logvar>>4));
+        cm.set(hash(++i, buf(1)+buf(2)-buf(3)));
 
         ctx[0] = (min(color,stride-1)<<9)|((abs(W-N)>3)<<8)|((W>N)<<7)|((W>NW)<<6)|((abs(N-NW)>3)<<5)|((N>NW)<<4)|((abs(N-NE)>3)<<3)|((N>NE)<<2)|((W>WW)<<1)|(N>NN);
         ctx[1] = ((LogMeanDiffQt(p1,Clip(Np1+NEp1-buffer(w*2-stride+1)))>>1)<<5)|((LogMeanDiffQt(Clip(N+NE-NNE),Clip(N+NW-NNW))>>1)<<2)|min(color,stride-1);
@@ -8890,7 +8883,6 @@ public:
   if (x>0 || !isPNG) {
     U8 B=(c0<<(8-bpos));
     int i=5;
-      
 
     Map[i++].set((((U8)(Clip(W+N-NW)-px-B))*8+bpos)|(LogMeanDiffQt(Clip(N+NE-NNE), Clip(N+NW-NNW))<<11));
     Map[i++].set((((U8)(Clip(N*2-NN)-px-B))*8+bpos)|(LogMeanDiffQt(W, Clip(NW*2-NNW))<<11));
@@ -8918,7 +8910,6 @@ public:
   if (++col>=stride*8) col=0;
       if (val2==1) return 1; 
       int  cnx=m.nx;
-      
       cm.mix(m);
       int count=(m.nx-cnx)/inpts;
       m.nx=cnx;
@@ -8947,8 +8938,6 @@ public:
         mixCxt[i++]=(min(255,(x+line)/32));
     }
     int i=0;
-    
-
     m.set(mixCxt[i++]|col, 256);
     m.set(mixCxt[i++], 256);
     m.set(mixCxt[i++], 512);
@@ -8961,20 +8950,21 @@ public:
     m.set(mixCxt[i++], 8192);
     m.set(hash(LogQt(N,5), LogMeanDiffQt(N,NN,3), c0)&0x1FFF, 8192);i++;
     m.set(hash(LogQt(W,5), LogMeanDiffQt(W,WW,3), c0)&0x1FFF, 8192);i++;
+    m.set(mixCxt[i++], 256);
+
+    m.set(hash(LogQt(N,5), LogMeanDiffQt(N,NN,3), c0)&0x1FFF, 8192);i++;
+    m.set(hash(LogQt(W,5), LogMeanDiffQt(W,WW,3), c0)&0x1FFF, 8192);i++;
     m.set(hash(LogQt(NN,5), LogMeanDiffQt(NN,NNN,3), c0)&0x1FFF, 8192);i++;
     m.set(hash(LogQt(WW,5), LogMeanDiffQt(WW,WWW,3), c0)&0x1FFF, 8192);i++;
-	m.set((W&0xC0)|((N&0xC0)>>2)|((WW&0xC0)>>4)|(NN>>6),6*64);
+	m.set((W&0xC0)|((N&0xC0)>>2)|((WW&0xC0)>>4)|(NN>>6),256);
 	m.set(Clamp4(N+p1-Np1, W, NW, N, NE),256);
 	m.set(Clamp4(N+p2-Np2, W, NW, N, NE),256);
 	m.set(W+Clamp4(NE*3-NNE*3+NNNE, W, N, NE, NEE),256);
 	m.set(Clamp4((W+Clip(NE*2-NNE))/2, W, NW, N, NE),256);
 	m.set((W+NEE)/2,256);
 	m.set(Clip((WWW-4*WW+6*W+Clip(NE*4-NNE*6+NNNE*4-NNNNE))/4),256);
-	m.set(Clip((-WWWW+5*WWW-10*WW+10*W+Clamp4(NE*4-NNE*6+NNNE*4-NNNNE, N, NE, NEE, NEEE))/5),256);
-	m.set(hash(LogQt(NNN,5), LogMeanDiffQt(NNN,NNNN,3), c0)&0x1FFF,8192);
-
-    m.set(mixCxt[i++], 256);
-    
+	m.set(Clip(W+N-NW),256);
+	m.set(Clip(W+N-NW+p1-Clip(Wp1+Np1-NWp1)),256);
   }
   else{
     m.add( -2048+((filter>>(7-bpos))&1)*4096 );
@@ -9923,12 +9913,12 @@ public:
   hbuf(2048),color(10), pred(4), dc(0),width(0), row(0),column(0),cbuf(0x20000),
   cpos(0), rs1(0), ssum(0), ssum1(0), ssum2(0), ssum3(0),cbuf2(0x20000),adv_pred(4),adv_pred1(3),adv_pred2(3),adv_pred3(3),adv_pred4(3) , run_pred(6),
   sumu(8), sumv(8), ls(10),lcp(7), zpos(64), blockW(10), blockN(10),  SamplingFactors(4),dqt_state(-1),dqt_end(0),qnum(0),pr0(0),
-  qtab(256),qmap(10),N(53+4+4+14+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+7),M(58+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1),cxt(N),m1(32+32+3+4+1+1+1+1+N*3+1+3*M+6,2050+3+1024+64+1024 +256+16+64,bd, 3+1+1+1+1+1,0,7,5),
+  qtab(256),qmap(10),N(1+53+4+4+14+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+7),M(58+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1),cxt(N),m1(32+32+3+4+1+1+1+1+N*3+1+3*M+6,2050+3+1024+64+1024 +256+16+64,bd, 3+1+1+1+1+1,0,7,5),
    apm{{0x40000,20-4},{0x40000,20-4},{0x20000,20-4},
    {0x20000,20-4},{0x20000,20-4},{0x20000,20-4},{0x20000,20-4},{0x20000,27},{0x20000,20-4},{0x20000,20-4},{0x20000,20-4},{0x20000,20-4},{0x20000,20-4}  },
    x(bd),buf(bd.buf),MJPEGMap( {21, 3, 128, 127}),MJPEGMap1( {21, 3, 128, 127}),
   hbcount(2),prev_coef(0),prev_coef2(0), prev_coef_rs(0), rstpos(0),rstlen(0),
-  hmap(level>10?0x8000000:(CMlimit(MEM()*2)),9,N,bd),skip(0), smx(256*256),jmiss(0),zux(0),ccount(1),lma(0),ama(0) {
+  hmap(level>10?0x8000000:(CMlimit(MEM()*8)),9,N,bd),skip(0), smx(256*256),jmiss(0),zux(0),ccount(1),lma(0),ama(0) {
   }
   int inputs() {return 7+3*N+1+1+2+2+2+2+2+2+M+2+1;}
   int nets() {return 9 + 1025 + 1024 + 512 + 4096 + 64 + 4096 + 1024 +4096+4096+4096+4096+4096+4096+4096+4096+4096+4096+(4096*3);}
@@ -10575,6 +10565,7 @@ public:
     cxt[i++]=hash(++n, hc, adv_pred1[0]/16,prev_coef/15);
     cxt[i++]=hash(++n, hc, adv_pred1[1]/16,prev_coef/15);
     cxt[i++]=hash(++n, hc, adv_pred1[2]/16,prev_coef/15);
+    cxt[i++]=hash(++n, coef, adv_pred[0]/16,prev_coef/15);
     
   }
 
@@ -14545,7 +14536,7 @@ class Predictor: public Predictors {
   U32 count;
   U32 lastmiss;
   eSSE sse;
-  const U8 activeModels[18+1] = { 
+  const U8 activeModels[18+1+1] = { 
    M_RECORD,
    M_MATCH ,
    M_MATCH1, 
@@ -14562,7 +14553,7 @@ class Predictor: public Predictors {
    M_SPARSEMATCH, 
    M_SPARSE_Y,
    M_SPARSE_Y1,
-
+M_IM24,
    M_PPM,M_CHART,M_LSTM    };
 public:
   Predictor();
@@ -14575,7 +14566,7 @@ public:
 
 Predictor::Predictor(): pr(16384),pr0(pr),order(0),ismatch(0), a(x),isCompressed(false),count(0),lastmiss(0),
  sse(x){
-   loadModels(activeModels,18+1);
+   loadModels(activeModels,18+1+1);
    // add extra 
    mixerInputs+=1;
    mixerNets+=64+    (8+1024)+    256+    512+   2048+   2048+    256+    1536;
@@ -14629,6 +14620,7 @@ void Predictor::update()  {
             models[M_WORD]->p(*m,0,x.finfo>0?x.finfo:0); //col
             models[M_SPARSE_Y]->p(*m,ismatch,order);
             models[M_SPARSE_Y1]->p(*m,ismatch,order);
+			models[M_IM24]->p(*m,x.finfo);
 
             models[M_DISTANCE]->p(*m);
             models[M_INDIRECT]->p(*m);
@@ -14660,7 +14652,7 @@ void Predictor::update()  {
     else c=c3/128+(x.c4>>31)*2+4*(c2/64)+(c1&240); 
     m->set(c, 1536);
     pr0=m->p(1,1);
-    pr=a.p2(pr0,pr,7);
+    pr=a.p2(pr0,pr,8);
     sse.update();
     pr = sse.p(pr);
 }
@@ -15217,6 +15209,8 @@ void update()  {
   //if (slow==true) models[M_NORMAL]->p(*m);
   if (slow==true) models[M_LSTM]->p(*m);
   models[M_DMC]->p(*m);   
+  models[M_IM8]->p(*m,x.finfo);
+
   models[M_IM24]->p(*m,x.finfo);
   m->add((stretch(StateMaps[0].p(x.c0,x.y))+1)>>1);
   m->add((stretch(StateMaps[1].p(x.c0|(x.buf(1)<<8),x.y))+1)>>1);
@@ -21536,7 +21530,7 @@ void transform_encode_block(Filetype type, File*in, U64 len, Encoder &en, int in
         else if (type==UUENC) encode_uud(in, tmp, int(len),info);
         else if (type==BASE85) encode_ascii85(in, tmp, int(len));
         else if (type==SZDD) encode_szdd(in, tmp, info);
-        else if (type==ZLIB) diffFound=encode_zlib(in, tmp, int(len))?0:1;
+        else if (type==ZLIB) diffFound=encode_gif(in, tmp, int(len))?0:1;
         else if (type==BZIP2) encode_bzip2(in, tmp, len,info);
         else if (type==CD) encode_cd(in, tmp, int(len), info);
         else if (type==MDF) encode_mdf(in, tmp, int(len));
@@ -21557,7 +21551,7 @@ void transform_encode_block(Filetype type, File*in, U64 len, Encoder &en, int in
         if (type==BASE64 ) decode_base64(tmp, int(tmpsize), in, FCOMPARE, diffFound);
         else if (type==UUENC ) decode_uud(tmp, int(tmpsize), in, FCOMPARE, diffFound);
         else if (type==BASE85 ) decode_ascii85(tmp, int(tmpsize), in, FCOMPARE, diffFound);
-        else if (type==ZLIB && !diffFound) decode_zlib(tmp, int(tmpsize), in, FCOMPARE, diffFound);
+        else if (type==ZLIB && !diffFound) decode_gif(tmp, tmpsize, in, FCOMPARE, diffFound);
         else if (type==BZIP2  )             decode_bzip2(tmp, tmpsize, in, FCOMPARE, diffFound,info);
         else if (type==GIF && !diffFound) decode_gif(tmp, tmpsize, in, FCOMPARE, diffFound);
         else if (type==MRBR || type==MRBR4) decode_mrb(tmp, int(tmpsize), info, in, FCOMPARE, diffFound);
@@ -21580,12 +21574,13 @@ void transform_encode_block(Filetype type, File*in, U64 len, Encoder &en, int in
             printf(" Transform fails at %0lu, skipping...\n", diffFound-1);
              in->setpos(begin);
              Filetype type2;
-             if (type==ZLIB || (type==BZIP2))  type2=CMP; else type2=DEFAULT;
+             if (type==ZLIB || (type==BZIP2))  type2=BINTEXT; else type2=BINTEXT;
               
             direct_encode_blockstream(type2, in, len, en, s1, s2);
             typenamess[type][it]-=len,  typenamesc[type][it]--;       // if type fails set
             typenamess[type2][it]+=len,  typenamesc[type2][it]++; // default info
-        } else {
+        } else
+	   {
             tmp->setpos(0);
             if (type==EXE) {
                direct_encode_blockstream(type, tmp, tmpsize, en, s1, s2);
