@@ -547,7 +547,7 @@ which computes 8 elements at a time, is not any faster).
 
 */
 
-#define PROGNAME "paq8sk53"  // Please change this if you change the program.
+#define PROGNAME "paq8sk56"  // Please change this if you change the program.
 #define SIMD_GET_SSE  //uncomment to use SSE2 in ContexMap
 //#define MT            //uncomment for multithreading, compression only. Handled by CMake and gcc when -DMT is passed.
 #define SIMD_CM_R       // SIMD ContextMap byterun
@@ -3909,9 +3909,9 @@ public:
       if (state){
           if (m.x.count>0x5FFFF) p1=Maps8b[i]->p1(state,m.x.y);else p1=Maps8b[i]->p(state,m.x.y);
       } 
-      int n0=nex(state, 2), n1=nex(state, 3), k=-~n1;
+      int n0=nex(state, 3), n1=nex(state, 4), k=-~n1;
       const int bitIsUncertain = int(n0 != 0 && n1 != 0);
-      k = (k*64)/(k-~n0);
+      k = (k*64)/(k - ~n0);
       n0=-!n0, n1=-!n1;
 
       // predict from last byte in context
@@ -3922,7 +3922,7 @@ public:
         int value = ilog(RunStats+1)<<(3-(RunStats&1));
         const int byte1IsUncertain = static_cast<const int>(ByteHistory[i][2] != ByteHistory[i][1]);
         const int bp = (0xFEA4U >> (bitPos << 1U)) & 3U; // {0}->0  {1}->1  {2,3,4}->2  {5,6,7}->3
-        if (param&CM_RUN1)      m.add(sign * (min(RunStats>>1, 32) << 5)); // +/- 32..1024
+        if (param&CM_RUN1)      m.add(sign * (min(RunStats>>1, 32) << 1)); // +/- 32..1024
         if (param&CM_RUN0)      m.add(sign*value);
         if (param&CM_RUN2)      m.add(sign*value);
         if (param&CM_MR)        m.add(stretch(MapsRun[i]->p( (RunStats>>1) << 4U | bp << 2U | byte1IsUncertain << 1 | predictedBit,m.x.y)) >> (1 + byte1IsUncertain));
@@ -3932,9 +3932,9 @@ public:
         if  (param&CM_RUN2)     m.add(0);
         if  (param&CM_MR)       m.add(0);
         if ((U32)((ByteHistory[i][2]+256)>>(8-bitPos))==bits)
-          {if (param&CM_RUN0)   m.add((((ByteHistory[i][2]>>(7-bitPos))&1)*2-1)*128);}
+          {if (param&CM_RUN0)   m.add((((ByteHistory[i][2]>>(7-bitPos))&1)*2-1)*128/2);}
         else if (HasHistory[i] && (U32)((ByteHistory[i][3]+256)>>(8-bitPos))==bits)
-          {if (param&CM_RUN0)   m.add((((ByteHistory[i][3]>>(7-bitPos))&1)*2-1)*128);}
+          {if (param&CM_RUN0)   m.add((((ByteHistory[i][3]>>(7-bitPos))&1)*2-1)*128/2);}
         else
           {if (param&CM_RUN0)   m.add(0);}
       }
@@ -3977,7 +3977,7 @@ public:
       if (HasHistory[i]) {
         state  = (ByteHistory[i][1]>>(7-bitPos))&1;
         state |= ((ByteHistory[i][2]>>(7-bitPos))&1)*2;
-        state |= ((ByteHistory[i][3]>>(7-bitPos))&1)*4;
+        state |= ((ByteHistory[i][3]>>(7-bitPos))&1)*6;
       }
       else
         state = 8;
@@ -4058,7 +4058,7 @@ private:
       F sum = w[i];
       for (int j=i+1; j<n; j++)
         sum -= (mCholesky[j][i] * w[j]);
-      w[i] = (sum /  mCholesky[i][i]) ;
+      w[i] = (sum /  mCholesky[i][i]);
     }
   }
 public:
@@ -7924,7 +7924,7 @@ class recordModel1: public Model {
 public:
   recordModel1( BlockData& bd,U64 msize=CMlimit(MEM()*2) ): x(bd),buf(bd.buf),  cpos1(256) , cpos2(256),
     cpos3(256), cpos4(256),wpos1(0x10000), rlen(3), rcount(2),padding(0),prevTransition(0),nTransition(0), col(0),mxCtx(0),
-    x1(0),MayBeImg24b(false),cm(32768, 3,M_RECORD), cn(32768/2, 3,M_RECORD),cq(32768*4, 3,M_RECORD), co(32768*2, 3,M_RECORD), cp(level>9?0x10000000 :CMlimit(msize*2), 16,M_RECORD), nMaps ( 6),
+    x1(0),MayBeImg24b(false),cm(32768, 3+1+1,M_RECORD), cn(32768/2, 3+1,M_RECORD),cq(32768*4, 3,M_RECORD), co(32768*2, 3,M_RECORD), cp(level>9?0x10000000 :CMlimit(msize*2), 16,M_RECORD), nMaps ( 6),
     N(0), NN(0), NNN(0), NNNN(0),WxNW(0), nIndCtxs(5){
         // run length and 2 candidates
         rlen[0] = 2; 
@@ -8053,11 +8053,14 @@ public:
     cm.set(hash(++i,c<<8| (min(255, (dict==true)?x.bufn.pos:buf.pos-cpos1[c])/4)));
     if (!( x.filetype==DECA))
     cm.set(hash(++i,w<<9| llog((dict==true)?x.bufn.pos:buf.pos-wpos1[w])>>2));
-    cm.set(hash(++i,rlen[0]|N<<10|NN<<18));
-
+    cm.set(hash(++i,rlen[0] | N<<10|NN<<18));
+    cm.set(hash(++i, rlen[1] | N<<10|NN<<18));
+    cm.set(hash(++i, rlen[2] | N<<10|NN<<18));
+	 
     cn.set(hash(++i,w|rlen[0]<<8));
     cn.set(hash(++i,d|rlen[0]<<16));
     cn.set(hash(++i,c|rlen[0]<<8));
+    cn.set(hash(++i,w|rlen[1]<<8));
 
     cq.set(hash(++i,w1<<3));
     cq.set(hash(++i,c1<<19));
@@ -8449,7 +8452,7 @@ class im24bitModel1: public Model {
    U8 NNNNN;
    U8 NNNNNN;
    Array<U8> MapCtxs, SCMapCtxs, pOLS;
-   const double lambda[6] ={ 0.98, 0.87, 0.9, 0.8, 0.92, 0.7 };
+   const double lambda[6] ={ 0.998, 0.87, 0.9, 0.8, 0.92, 0.7 };
    const int num[6] ={ 32, 12, 15, 10, 14, 8 };
    OLS<double, U8> ols[6][4] = { 
     {{num[0], 1, lambda[0]}, {num[0], 1, lambda[0]}, {num[0], 1, lambda[0]}, {num[0], 1, lambda[0]}},
@@ -8952,8 +8955,8 @@ public:
     m.set(hash(LogQt(W,5), LogMeanDiffQt(W,WW,3), c0)&0x1FFF, 8192);i++;
     m.set(mixCxt[i++], 256);
 
-    m.set(hash(LogQt(N,5), LogMeanDiffQt(N,NN,3), c0)&0x1FFF, 8192);i++;
-    m.set(hash(LogQt(W,5), LogMeanDiffQt(W,WW,3), c0)&0x1FFF, 8192);i++;
+//    m.set(hash(LogQt(N,5), LogMeanDiffQt(N,NN,3), c0)&0x1FFF, 8192);i++;
+//    m.set(hash(LogQt(W,5), LogMeanDiffQt(W,WW,3), c0)&0x1FFF, 8192);i++;
     m.set(hash(LogQt(NN,5), LogMeanDiffQt(NN,NNN,3), c0)&0x1FFF, 8192);i++;
     m.set(hash(LogQt(WW,5), LogMeanDiffQt(WW,WWW,3), c0)&0x1FFF, 8192);i++;
 	m.set((W&0xC0)|((N&0xC0)>>2)|((WW&0xC0)>>4)|(NN>>6),256);
@@ -9791,7 +9794,7 @@ public:
       assert(i<ncontext);
       cp[i]+=a;                    // add
       const int s=*cp[i];
-      iy = int(s <= 2);
+      iy = int(s <= 8);
       n0=-!nex(s,2);
       n1=-!nex(s,3);
       return sm[i]->p1(s,y);
@@ -13163,8 +13166,9 @@ class normalModel1: public Model {
   const int N;
   ContextMap2   cm;
   StateMap StateMaps[4];
-  RunContextMap /*rcm7,*/ rcm9, rcm10;
+  RunContextMap rcm7, rcm9, rcm10;
   int inpt;
+  APM apm[2];
 public:
   normalModel1(BlockData& bd,U32 val=0):x(bd),buf(bd.buf), N(10), cm(CMlimit(MEM()*32), N,M_NORMAL,
   CM_RUN1+
@@ -13176,12 +13180,14 @@ public:
   CM_M12+
   CM_M6
   ), StateMaps{ 256, 256*256,256*256,256*256 },
-  /*rcm7(CMlimit(MEM()/(level>8?8:4)),bd),*/
-  rcm9(CMlimit(MEM()/((level>8?8:4))),bd), rcm10(CMlimit(MEM()/(level>8?4:2)),bd){
+   apm{{0x40000,20-4},{0x40000,20-4}},
+
+  rcm7(CMlimit(MEM()/(level>=8?2:1)),bd),
+  rcm9(CMlimit(MEM()/((level>=8?2:1))),bd), rcm10(CMlimit(MEM()/(level>=8?2:1)),bd){
  }
  int inputs() {return 10*cm.inputs() +3+2+2+1;}
- int nets() {return 0;}
-  int netcount() {return 0;}
+ int nets() {return 4096*2;}
+  int netcount() {return 1+1;}
   
   
 int p(Mixer& m,int val1=0,int val2=0){  
@@ -13192,7 +13198,7 @@ int p(Mixer& m,int val1=0,int val2=0){
     for (i=1; i<=7; ++i)
       cm.set(x.cxt[i]);
 
-    //rcm7.set(x.cxt[7]);
+//    rcm7.set(x.cxt[7]);
     cm.set(x.cxt[9]);
     rcm9.set(x.cxt[10]);
     
@@ -13201,13 +13207,15 @@ int p(Mixer& m,int val1=0,int val2=0){
 
   }
   
-  //rcm7.mix(m);
+//  rcm7.mix(m);
   rcm9.mix(m);
   rcm10.mix(m);
   m.add((stretch(StateMaps[0].p(x.c0-1,x.y)))>>2);
-  m.add((stretch(StateMaps[1].p((x.c0-1)|(buf(1)<<8),x.y)))>>2);
+  m.add((stretch(StateMaps[1].p((x.c0-1)|(buf(1)<<8)|x.bpos<<1,x.y)))>>2);
   m.add((stretch(StateMaps[2].p((x.c0-1)|(buf(1)<<8),x.y,64)))>>2);
   m.add((stretch(StateMaps[3].p((x.c0-1)|(buf(2)<<8),x.y,64)))>>2);
+  m.set(x.c0|buf(1)<<8,4096);
+  m.set(x.c0|buf(2)<<8,4096);
   return max(0, cm.mix(m)-(N-7)); 
 }
   virtual ~normalModel1(){
@@ -14771,6 +14779,8 @@ class PredictorJPEG: public Predictors {
   struct {
       APM APMs[2];
     } Jpeg;
+  StateMap StateMaps[3];
+
   bool Bypass; 
   const U8 activeModels[8+3+3+2+2+1+1] = { 
    M_RECORD,
@@ -14803,7 +14813,7 @@ public:
 PredictorJPEG(): pr(16384), 
   Jpeg{
     { /*APM:*/ { 0x2000}, { 0x2000} }
-  },
+  },StateMaps{ 256, 256*256, 256*256 },
   Bypass(false){
    loadModels(activeModels,8+3+3+2+2+1+1);
    // add extra 
@@ -15171,25 +15181,27 @@ class PredictorIMG24: public Predictors {
     APM APMs[1];
     APM1 APM1s[2];
   } Image;
-  StateMap StateMaps[2];
+  StateMap StateMaps[3];
   eSSE sse;
-  const U8 activeModels[4+1+1+1+2+1+1+1] = { 
+  const U8 activeModels[4+1+1+1+2+1+1+1+1+1] = { 
    M_MATCH ,M_PPM,M_IM8,
    M_MATCH1, M_LINEAR,
    M_IM24,M_DMC,M_DISTANCE, M_INDIRECT,
-   M_NORMAL,M_RECORD,
+   M_NORMAL,M_RECORD,   M_NEST, 
+   M_IM4,
+
    M_LSTM    };
 public:
   int p()  const {/*assert(pr>=0 && pr<4096);*/ return pr;} 
    ~PredictorIMG24(){ }
 
-PredictorIMG24(): pr(16384),Image{ {0x1000/*, 0x10000, 0x10000, 0x10000*/}, {{0x10000,x}, {0x10000,x}} },
-                  StateMaps{ 256, 256*256}, sse(x){
-  loadModels(activeModels,4+1+1+1+2+1+1+1);   
+PredictorIMG24(): pr(16384),Image{ {0x1000 /*, 0x10000, 0x10000*/}, {{0x10000,x}, {0x10000,x}} },
+                  StateMaps{ 256, 256*256, 256*256 }, sse(x){
+  loadModels(activeModels,4+1+1+1+2+1+1+1+1+1);   
    // add extra 
    mixerInputs+=1+2;
-   mixerNets+=  8192;
-   mixerNetsCount+=1;
+   mixerNets+=  8192+2*4096;
+   mixerNetsCount+=1+2;
    sse.p(pr);
    // create mixer
    m=new Mixer(mixerInputs,  mixerNets,x, mixerNetsCount,0,3,2);
@@ -15205,28 +15217,36 @@ void update()  {
   m->add(256);
   if (x.bpos==0)x.count++;
   models[M_MATCH]->p(*m);
-  models[M_MATCH1]->p(*m);
-  //if (slow==true) models[M_NORMAL]->p(*m);
+//  models[M_MATCH1]->p(*m);
+  //if (slow==true) 
+  models[M_NORMAL]->p(*m);
   if (slow==true) models[M_LSTM]->p(*m);
   models[M_DMC]->p(*m);   
   models[M_IM8]->p(*m,x.finfo);
-
   models[M_IM24]->p(*m,x.finfo);
   m->add((stretch(StateMaps[0].p(x.c0,x.y))+1)>>1);
   m->add((stretch(StateMaps[1].p(x.c0|(x.buf(1)<<8),x.y))+1)>>1);
+  m->add((stretch(StateMaps[2].p(x.c0|(x.buf(2)<<8),x.y))+1)>>1);
+  m->add(256);
+
   m->set(x.Image.ctx&0x1FFF,8192);
+	    m->set(x.buf(2), 4096);
+        m->set(x.buf(3), 4096);
+
   int pr1, pr2, pr3;
   int pr0=x.filetype==IMAGE24? m->p(1,1): m->p();
   int limit=0x3FF>>((x.blpos<0xFFF)*4);
  // pr=pr0;
   pr  = Image.APMs[0].p(pr0, (x.c0<<4)|(x.Misses&0xF), x.y,limit);
- /* pr1 = Image.APMs[1].p(pr0, hash(x.c0, x.Image.pixels.W, x.Image.pixels.WW)&0xFFFF,  x.y,limit);
-  pr2 = Image.APMs[2].p(pr0, hash(x.c0, x.Image.pixels.N, x.Image.pixels.NN)&0xFFFF, x.y, limit);
+//  pr1 = Image.APMs[1].p(pr0, hash(x.c0, x.Image.pixels.W, x.Image.pixels.WW)&0xFFFF,  x.y,limit);
+/*  pr2 = Image.APMs[2].p(pr0, hash(x.c0, x.Image.pixels.N, x.Image.pixels.NN)&0xFFFF, x.y, limit);
   pr3 = Image.APMs[3].p(pr0, (x.c0<<8)|x.Image.ctx, x.y, limit);
   pr0 = (pr0+pr1+pr2+pr3+2)>>2;
 */
+//  pr0 = (pr0+pr+pr1+1)>>1;
+  
   pr1 = Image.APM1s[0].p(pr, hash(x.c0, x.Image.pixels.W, x.buf(1)-x.Image.pixels.Wp1, x.Image.plane)&0xFFFF);
-  pr2 = Image.APM1s[1].p(pr, hash(x.c0, x.Image.pixels.N, x.buf(1)-x.Image.pixels.Np1, x.Image.plane)&0xFFFF);
+  pr2 = Image.APM1s[1].p(pr, hash(x.c0,  x.Image.pixels.N, x.buf(1)-x.Image.pixels.Np1, x.Image.plane)&0xFFFF);
   pr=(pr*2+pr1*3+pr2*3+4)>>3;
   pr = (pr+pr0+1)>>1;
   sse.update();
@@ -15248,7 +15268,7 @@ class PredictorTXTWRT: public Predictors {
   } Text;
   U32 count;
   U32 blenght;
-  StateMap StateMaps[1];
+  StateMap StateMaps[4];
   wrtDecoder wr;
   eSSE sse;
   int decodedTextLen,lasttag;
@@ -15279,7 +15299,7 @@ public:
 
 PredictorTXTWRT::PredictorTXTWRT(): pr(16384),pr0(pr),order(0),rlen(0),ismatch(0),
 Text{ {0x10000, 0x10000, 0x10000, 0x10000}, {{0x10000,x}, {0x10000,x}, {0x10000,x}} },
-count(0),blenght(1024*4),StateMaps{  ( 0x7FFFFF+1)<<2},sse(x),
+count(0),blenght(1024*4),StateMaps{  ( 0x7FFFFF+1)<<2, ( 0x7FFFFF+1)<<2,( 0x7FFFFF+1)<<2,( 0x7FFFFF+1)<<2 },sse(x),
 decodedTextLen(0),lasttag(0),counttags(0),lState(0){
    loadModels(activeModels,15);  
    // add extra 

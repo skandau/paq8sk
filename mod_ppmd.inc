@@ -1329,8 +1329,8 @@ if( init_flag ) {
     ppmd_6_32_1.Init(6,32,1,0);
 }
 
-m.add( stretch(4096-ppmd_12_256_1.ppmd_Predict(4096,y)) );
-m.add( stretch(4096-ppmd_6_32_1.ppmd_Predict(4096,y)) );
+m.add( stretch(4096-ppmd_16_256_1.ppmd_Predict(4096,y)) );
+m.add( stretch(4096-ppmd_8_32_1.ppmd_Predict(4096,y)) );
 
 init_flag=0;
 }*/

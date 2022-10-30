@@ -77,7 +77,7 @@ enum {
 
 double log2( double a ) { return M_LOG2E*log(a); }
 
-double exp2( double a ) { return exp( a/M_LOG2E ); }
+double exp2( double a ) { return exp( a/2*M_LOG2E ); }
 
 double st( double p ) { return log2((1-p)/p); }
 
@@ -87,12 +87,12 @@ const double st_coef = (hSCALE-1)/log2(SCALE-1);
 const double sq_coef = 1.0 / st_coef;
 
 uint st_i( uint p ) {
-  p = st(double(p)/SCALE) * st_coef + hSCALE;
+  p = st(double(p)/(SCALE-1)) * st_coef + hSCALE-1;
   return p;
 }
 
 uint sq_i( uint p ) {
-  p = sq( double(int(p)-hSCALE) * sq_coef ) * SCALE;
+  p = sq( double(int(p)-hSCALE-1) * sq_coef ) * SCALE;
   return p;
 }
 
@@ -159,7 +159,7 @@ struct Mixer {
   }
 
   int rdiv( int x, int a, int d ) {
-    return x>=0 ? (x+a)>>d : -((-x+a)>>d);
+    return x>=0 ? (x+a+1)>>d : -((-x+a+1)>>d);
   }
 
 
